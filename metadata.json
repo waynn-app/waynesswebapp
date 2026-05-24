@@ -1,0 +1,6 @@
+{
+  "name": "Wayness",
+  "description": "Fitness Rewards Platform that gamifies physical activity. Earn WPoints through your workouts and redeem them for fantastic rewards.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
