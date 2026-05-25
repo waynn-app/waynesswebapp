@@ -11,6 +11,8 @@ import UserProfile from './components/UserProfile';
 import Notifications from './components/Notifications';
 import SettingsComponent from './components/Settings';
 
+import { supabase, isSupabaseConfigured } from './supabaseClient';
+
 import { 
   initialProfile, 
   initialWorkouts, 
@@ -28,6 +30,7 @@ export default function App() {
   });
 
   const [activeTab, setActiveTab] = useState<string>('feed');
+  const [supabaseUser, setSupabaseUser] = useState<any | null>(null);
 
   // Load and initialize persistent states or mock fallback
   const [profile, setProfile] = useState<Profile>(() => {
@@ -66,7 +69,165 @@ export default function App() {
     return initialNotifications;
   });
 
-  // Track state in local storage whenever key components change
+  // Supabase Auth and Sync Effect
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+
+    const pullSupabaseData = async (user: any) => {
+      setSupabaseUser(user);
+      
+      // 1. Fetch Profile Info
+      const { data: dbProfile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      
+      let finalProfile = dbProfile;
+      if (!dbProfile) {
+        // Build and insert a matching profile record dynamically
+        const newProfile = {
+          id: user.id,
+          username: user.user_metadata?.username || user.email?.split('@')[0] || 'atleta_way',
+          full_name: user.user_metadata?.full_name || 'Nuevo Atleta',
+          avatar_url: `https://api.dicebear.com/7.x/adventurer/svg?seed=${user.id}`,
+          bio: 'Nuevo atleta de la comunidad Wayness.',
+          wpoints_balance: 500,
+          total_calories: 0,
+          total_workouts: 0,
+          followers_count: 12,
+          following_count: 18
+        };
+        const { error: insErr } = await supabase.from('profiles').insert([newProfile]);
+        if (!insErr) {
+          finalProfile = {
+            id: newProfile.id,
+            username: newProfile.username,
+            fullName: newProfile.full_name,
+            avatarUrl: newProfile.avatar_url,
+            bio: newProfile.bio,
+            wpointsBalance: newProfile.wpoints_balance,
+            totalCalories: newProfile.total_calories,
+            totalWorkouts: newProfile.total_workouts,
+            followersCount: newProfile.followers_count,
+            followingCount: newProfile.following_count,
+            createdAt: new Date().toISOString()
+          };
+        }
+      } else {
+        // Map snake_case fields to camelCase
+        finalProfile = {
+          id: dbProfile.id,
+          username: dbProfile.username,
+          fullName: dbProfile.full_name,
+          avatarUrl: dbProfile.avatar_url,
+          bio: dbProfile.bio || '',
+          wpointsBalance: dbProfile.wpoints_balance || 0,
+          totalCalories: dbProfile.total_calories || 0,
+          totalWorkouts: dbProfile.total_workouts || 0,
+          followersCount: dbProfile.followers_count || 0,
+          followingCount: dbProfile.following_count || 0,
+          createdAt: dbProfile.created_at
+        };
+      }
+      if (finalProfile) setProfile(finalProfile);
+
+      // 2. Fetch logged-in user workouts
+      const { data: dbWorkouts } = await supabase
+        .from('workouts')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('workout_date', { ascending: false });
+      
+      if (dbWorkouts && dbWorkouts.length > 0) {
+        setWorkouts(dbWorkouts.map((w: any) => ({
+          id: w.id,
+          userId: w.user_id,
+          type: w.type,
+          durationMinutes: w.duration_minutes,
+          caloriesBurned: w.calories_burned,
+          wpointsEarned: w.wpoints_earned,
+          heartRateAvg: w.heart_rate_avg,
+          distanceKm: w.distance_km ? parseFloat(w.distance_km) : undefined,
+          notes: w.notes,
+          workoutDate: w.workout_date
+        })));
+      }
+
+      // 3. Fetch collective social feed
+      const { data: dbPosts } = await supabase
+        .from('posts')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (dbPosts && dbPosts.length > 0) {
+        setPosts(dbPosts.map((p: any) => ({
+          id: p.id,
+          userId: p.user_id,
+          username: p.username,
+          userAvatar: p.user_avatar,
+          content: p.content,
+          imageUrl: p.image_url || undefined,
+          workoutId: p.workout_id || undefined,
+          workoutDetails: p.workout_details || undefined,
+          likesCount: p.likes_count,
+          likedByMe: false,
+          commentsCount: p.comments_count,
+          createdAt: p.created_at
+        })));
+      }
+
+      // 4. Fetch redemptions log
+      const { data: dbRedemptions } = await supabase
+        .from('redemptions')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('redeemed_at', { ascending: false });
+
+      if (dbRedemptions && dbRedemptions.length > 0) {
+        setRedemptions(dbRedemptions.map((r: any) => ({
+          id: r.id,
+          userId: r.user_id,
+          rewardId: r.reward_id,
+          rewardName: r.reward_name,
+          rewardImageUrl: r.reward_image_url,
+          wpointsSpent: r.wpoints_spent,
+          status: r.status,
+          discountCode: r.discount_code,
+          emailSent: r.email_sent,
+          redeemedAt: r.redeemed_at
+        })));
+      }
+    };
+
+    // Subscriptions to auth state
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        setIsLoggedIn(true);
+        localStorage.setItem('wayness_is_logged', 'true');
+        await pullSupabaseData(session.user);
+      } else if (event === 'SIGNED_OUT') {
+        setIsLoggedIn(false);
+        localStorage.removeItem('wayness_is_logged');
+        setSupabaseUser(null);
+        setProfile(initialProfile);
+      }
+    });
+
+    // Run direct active session check on boot
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setIsLoggedIn(true);
+        pullSupabaseData(session.user);
+      }
+    });
+
+    return () => {
+      subscription?.unsubscribe();
+    };
+  }, []);
+
+  // Track state in local storage whenever key components change as fallback
   useEffect(() => {
     localStorage.setItem('wayness_profile', JSON.stringify(profile));
   }, [profile]);
@@ -91,10 +252,15 @@ export default function App() {
     localStorage.setItem('wayness_notifications', JSON.stringify(notifications));
   }, [notifications]);
 
-  // Auth Callbacks
-  const handleLoginSuccess = (email: string, usernameStr: string, fullNameStr: string) => {
+  // Auth Callbacks (Local / Supabase unified handler)
+  const handleLoginSuccess = async (email: string, usernameStr: string, fullNameStr: string, supabaseUserObj?: any) => {
+    if (supabaseUserObj) {
+      setSupabaseUser(supabaseUserObj);
+    }
+    
     const freshUser: Profile = {
-      ...initialProfile,
+      ...profile,
+      id: supabaseUserObj?.id || CURRENT_USER_ID,
       fullName: fullNameStr || 'Carlos Gómez',
       username: usernameStr || 'atleta_way',
     };
@@ -104,25 +270,32 @@ export default function App() {
     setActiveTab('feed');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (isSupabaseConfigured && supabase) {
+      await supabase.auth.signOut();
+    }
     setIsLoggedIn(false);
     localStorage.removeItem('wayness_is_logged');
+    setSupabaseUser(null);
+    setProfile(initialProfile);
   };
 
-  // Workout Registry callbacks (triggers database simulation)
-  const handleAddWorkout = (workoutData: Omit<Workout, 'id' | 'userId' | 'workoutDate'>) => {
+  // Workout Registry callbacks (triggers database and real-time syncing)
+  const handleAddWorkout = async (workoutData: Omit<Workout, 'id' | 'userId' | 'workoutDate'>) => {
     const newId = `w_spawn_${Date.now()}`;
+    const targetUserId = supabaseUser?.id || CURRENT_USER_ID;
+
     const newWorkout: Workout = {
       ...workoutData,
       id: newId,
-      userId: CURRENT_USER_ID,
+      userId: targetUserId,
       workoutDate: new Date().toISOString()
     };
 
-    // Update workouts logs
+    // Update workouts logs state
     setWorkouts([newWorkout, ...workouts]);
 
-    // Update user balance and counts
+    // Update user balance state
     const claimWPoints = workoutData.wpointsEarned;
     const additionalCalories = workoutData.caloriesBurned;
     
@@ -133,11 +306,35 @@ export default function App() {
       totalWorkouts: prev.totalWorkouts + 1
     }));
 
+    // Perform DB Sync
+    if (isSupabaseConfigured && supabase && supabaseUser) {
+      try {
+        await supabase.from('workouts').insert([{
+          user_id: supabaseUser.id,
+          type: workoutData.type,
+          duration_minutes: workoutData.durationMinutes,
+          calories_burned: workoutData.caloriesBurned,
+          wpoints_earned: workoutData.wpointsEarned,
+          heart_rate_avg: workoutData.heartRateAvg,
+          distance_km: workoutData.distanceKm,
+          notes: workoutData.notes
+        }]);
+
+        await supabase.from('profiles').update({
+          wpoints_balance: profile.wpointsBalance + claimWPoints,
+          total_calories: profile.totalCalories + additionalCalories,
+          total_workouts: profile.totalWorkouts + 1
+        }).eq('id', supabaseUser.id);
+      } catch (err) {
+        console.error('Error syncing workout details to Supabase:', err);
+      }
+    }
+
     // Auto trigger a Social Post link to feed
     const newPostId = `post_spawn_${Date.now()}`;
     const newPost: Post = {
       id: newPostId,
-      userId: CURRENT_USER_ID,
+      userId: targetUserId,
       username: profile.username,
       userAvatar: profile.avatarUrl,
       content: workoutData.notes || `¡Acabo de registrar un entrenamiento de ${workoutData.type}! 🔥 Sintiéndome increíble y ganando recompensas de salud.`,
@@ -156,13 +353,30 @@ export default function App() {
     };
     setPosts([newPost, ...posts]);
 
+    if (isSupabaseConfigured && supabase && supabaseUser) {
+      try {
+        await supabase.from('posts').insert([{
+          user_id: supabaseUser.id,
+          username: profile.username,
+          user_avatar: profile.avatarUrl,
+          content: newPost.content,
+          workout_id: null, // can be linked later as uuid
+          workout_details: newPost.workoutDetails,
+          likes_count: 0,
+          comments_count: 0
+        }]);
+      } catch (err) {
+        console.error('Error syncing social post to Supabase:', err);
+      }
+    }
+
     // Spawn a congrats Notification in app
     const notId = `notification_spawn_${Date.now()}`;
     const notDescription: Notification = {
       id: notId,
-      userId: CURRENT_USER_ID,
+      userId: targetUserId,
       type: 'reward',
-      title: '¡Esfuerzo Recompensado!',
+      title: '¡Esfuerzo Recompensado Google Health!',
       content: `Sumaste +${claimWPoints} WPoints a tu balance. ¡Tu total actual es de ${(profile.wpointsBalance + claimWPoints).toLocaleString()} WP!`,
       isRead: false,
       createdAt: new Date().toISOString()
@@ -171,12 +385,13 @@ export default function App() {
   };
 
   // Social feed action handlers
-  const handleAddPost = (content: string, imageUrl?: string, workoutId?: string) => {
+  const handleAddPost = async (content: string, imageUrl?: string, workoutId?: string) => {
     const linkedWorkout = workouts.find((w) => w.id === workoutId);
+    const targetUserId = supabaseUser?.id || CURRENT_USER_ID;
     
     const newPost: Post = {
       id: `post_type_${Date.now()}`,
-      userId: CURRENT_USER_ID,
+      userId: targetUserId,
       username: profile.username,
       userAvatar: profile.avatarUrl,
       content,
@@ -197,6 +412,21 @@ export default function App() {
     };
 
     setPosts([newPost, ...posts]);
+
+    if (isSupabaseConfigured && supabase && supabaseUser) {
+      try {
+        await supabase.from('posts').insert([{
+          user_id: supabaseUser.id,
+          username: profile.username,
+          user_avatar: profile.avatarUrl,
+          content: content,
+          image_url: imageUrl,
+          workout_details: newPost.workoutDetails
+        }]);
+      } catch (err) {
+        console.error(err);
+      }
+    }
   };
 
   const handleLikePost = (postId: string) => {
@@ -206,7 +436,6 @@ export default function App() {
           const likedByMe = !post.likedByMe;
           const likesCount = likedByMe ? post.likesCount + 1 : post.likesCount - 1;
           
-          // Spawn notification if liked by someone else
           return {
             ...post,
             likesCount,
@@ -222,7 +451,7 @@ export default function App() {
     const newComment = {
       id: `c_spawn_${Date.now()}`,
       postId,
-      userId: CURRENT_USER_ID,
+      userId: supabaseUser?.id || CURRENT_USER_ID,
       username: profile.username,
       avatarUrl: profile.avatarUrl,
       content: commentContent,
@@ -244,7 +473,9 @@ export default function App() {
   };
 
   // Rewards shop redemptions
-  const handleRedeemReward = (reward: Reward, discountCode: string) => {
+  const handleRedeemReward = async (reward: Reward, discountCode: string) => {
+    const targetUserId = supabaseUser?.id || CURRENT_USER_ID;
+
     // Subtract points balance
     setProfile((prev) => ({
       ...prev,
@@ -254,7 +485,7 @@ export default function App() {
     // Register receipt ticket
     const newRedemption: Redemption = {
       id: `red_${Date.now()}`,
-      userId: CURRENT_USER_ID,
+      userId: targetUserId,
       rewardId: reward.id,
       rewardName: reward.name,
       rewardImageUrl: reward.imageUrl,
@@ -266,10 +497,29 @@ export default function App() {
     };
     setRedemptions([newRedemption, ...redemptions]);
 
+    if (isSupabaseConfigured && supabase && supabaseUser) {
+      try {
+        await supabase.from('redemptions').insert([{
+          user_id: supabaseUser.id,
+          reward_id: reward.id,
+          reward_name: reward.name,
+          reward_image_url: reward.imageUrl,
+          wpoints_spent: reward.wpointsCost,
+          discount_code: discountCode
+        }]);
+
+        await supabase.from('profiles').update({
+          wpoints_balance: profile.wpointsBalance - reward.wpointsCost
+        }).eq('id', supabaseUser.id);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
     // Spawn redemption notification rule
     const not: Notification = {
       id: `not_red_${Date.now()}`,
-      userId: CURRENT_USER_ID,
+      userId: targetUserId,
       type: 'reward',
       title: 'Canje Aprobado',
       content: `¡Tu cupón de canje para ${reward.name} ha sido generado con éxito! Revisa tu correo o historial de canjes.`,
@@ -280,14 +530,22 @@ export default function App() {
   };
 
   // Profile data updates
-  const handleUpdateBio = (newBio: string) => {
+  const handleUpdateBio = async (newBio: string) => {
     setProfile((prev) => ({
       ...prev,
       bio: newBio
     }));
+
+    if (isSupabaseConfigured && supabase && supabaseUser) {
+      try {
+        await supabase.from('profiles').update({ bio: newBio }).eq('id', supabaseUser.id);
+      } catch (err) {
+        console.error(err);
+      }
+    }
   };
 
-  const handleUpdateFullProfile = (fullName: string, username: string, avatarUrl: string) => {
+  const handleUpdateFullProfile = async (fullName: string, username: string, avatarUrl: string) => {
     setProfile((prev) => ({
       ...prev,
       fullName,
@@ -361,6 +619,7 @@ export default function App() {
           <SettingsComponent
             profile={profile}
             onUpdateFullProfile={handleUpdateFullProfile}
+            onSyncGoogleHealth={handleAddWorkout}
           />
         );
       default:

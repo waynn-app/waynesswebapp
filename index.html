@@ -4,6 +4,64 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>My Google AI Studio App</title>
+    <script>
+      (function() {
+        // Ensure FormData has keys and is defined to prevent unnecessary polyfills
+        try {
+          if (typeof window !== 'undefined' && typeof window.FormData !== 'undefined') {
+            if (!window.FormData.prototype.keys) {
+              window.FormData.prototype.keys = function() {
+                var keys = [];
+                // fallback empty iterator
+                return keys[Symbol.iterator]();
+              };
+            }
+            if (!window.FormData.prototype.values) {
+              window.FormData.prototype.values = function() {
+                var values = [];
+                return values[Symbol.iterator]();
+              };
+            }
+            if (!window.FormData.prototype.entries) {
+              window.FormData.prototype.entries = function() {
+                var entries = [];
+                return entries[Symbol.iterator]();
+              };
+            }
+          }
+        } catch (e) {
+          console.warn("FormData patch error:", e);
+        }
+        
+        // Handle fetch override gracefully to prevent read-only errors
+        try {
+          var targetGlobal = typeof globalThis !== 'undefined' ? globalThis : (typeof window !== 'undefined' ? window : this);
+          var _rawFetch = targetGlobal.fetch;
+          if (_rawFetch) {
+            try {
+              Object.defineProperty(targetGlobal, 'fetch', {
+                get: function() { return _rawFetch; },
+                set: function(newFetch) { _rawFetch = newFetch; },
+                configurable: true,
+                enumerable: true
+              });
+            } catch (innerErr) {
+              // If redefining fetch directly on targetGlobal fails, try defining it on window
+              if (typeof window !== 'undefined' && targetGlobal !== window) {
+                Object.defineProperty(window, 'fetch', {
+                  get: function() { return _rawFetch; },
+                  set: function(newFetch) { _rawFetch = newFetch; },
+                  configurable: true,
+                  enumerable: true
+                });
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("Fetch getter/setter patch warning:", e);
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

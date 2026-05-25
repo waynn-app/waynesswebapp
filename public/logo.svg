@@ -1,0 +1,38 @@
+<svg viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2005/svg">
+  <!-- Outer subtle border circle -->
+  <circle cx="256" cy="256" r="248" fill="#F3F4F6" />
+  <!-- Inner gradient circle -->
+  <circle cx="256" cy="256" r="236" fill="url(#purple_pink_grad)" />
+
+  <!-- Symmetrical Dumbbells and W Logo -->
+  
+  <!-- Left Small Weight Plate -->
+  <rect x="74" y="211" width="20" height="90" rx="10" fill="white" />
+  
+  <!-- Left Medium Weight Plate -->
+  <rect x="114" y="176" width="36" height="160" rx="18" fill="white" />
+
+  <!-- The Main W component -->
+  <!-- We'll frame the massive rounded columns of the letter W and then the bottom connection -->
+  <rect x="174" y="144" width="46" height="190" rx="23" fill="white" />
+  <rect x="292" y="144" width="46" height="190" rx="23" fill="white" />
+  <rect x="233" y="210" width="46" height="124" rx="23" fill="white" />
+  
+  <!-- Fill bottom gap to merge columns into a solid W shape -->
+  <path d="M 174 250 L 338 250 L 338 312 C 338 358, 174 358, 174 312 Z" fill="white" />
+  
+  <!-- Right Medium Weight Plate -->
+  <rect x="362" y="176" width="36" height="160" rx="18" fill="white" />
+
+  <!-- Right Small Weight Plate -->
+  <rect x="418" y="211" width="20" height="90" rx="10" fill="white" />
+
+  <defs>
+    <!-- Beautiful Purple-Pink brand gradient -->
+    <linearGradient id="purple_pink_grad" x1="64" y1="64" x2="448" y2="448" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7C3AED" />
+      <stop offset="50%" stop-color="#BE185D" />
+      <stop offset="100%" stop-color="#EC4899" />
+    </linearGradient>
+  </defs>
+</svg>

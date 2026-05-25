@@ -1,53 +1,181 @@
 import React, { useState } from 'react';
-import { motion } from 'motion/react';
-import { Shield, Flame, Gift, Award, LogIn, Sparkles, UserPlus, HelpCircle } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Shield, Flame, Gift, Award, LogIn, Sparkles, UserPlus, HelpCircle, Database, Check, ChevronRight, AlertCircle, Copy, Laptop, RefreshCw } from 'lucide-react';
+import { supabase, isSupabaseConfigured, SUPABASE_SQL_SCHEMA } from '../supabaseClient';
 
 interface LandingPageProps {
-  onLoginSuccess: (email: string, username: string, fullName: string) => void;
+  onLoginSuccess: (email: string, username: string, fullName: string, supabaseUserObj?: any) => void;
 }
 
 export default function LandingPage({ onLoginSuccess }: LandingPageProps) {
   const [authMode, setAuthMode] = useState<'none' | 'signin' | 'signup' | 'forgot'>('none');
+  const [showSetupGuide, setShowSetupGuide] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [copiedSql, setCopiedSql] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
       setError('Por favor complete todos los campos');
       return;
     }
     setError('');
-    // Successful login transition
-    onLoginSuccess(email, username || 'atleta_way', fullName || 'Carlos Gómez');
+    setIsSubmitting(true);
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error: authErr } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (authErr) throw authErr;
+
+        if (data.user) {
+          onLoginSuccess(
+            data.user.email || email,
+            data.user.user_metadata?.username || email.split('@')[0],
+            data.user.user_metadata?.full_name || email.split('@')[0],
+            data.user
+          );
+        }
+      } catch (err: any) {
+        setError(err.message || 'Error al iniciar sesión con Supabase');
+        setIsSubmitting(false);
+      }
+    } else {
+      // Mock flow
+      setTimeout(() => {
+        setIsSubmitting(false);
+        onLoginSuccess(email, username || 'atleta_way', fullName || 'Carlos Gómez');
+      }, 800);
+    }
   };
 
-  const handleSignUp = (e: React.FormEvent) => {
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password || !fullName || !username) {
       setError('Por favor llene todos los campos requeridos');
       return;
     }
     setError('');
-    onLoginSuccess(email, username, fullName);
+    setIsSubmitting(true);
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error: authErr } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              full_name: fullName,
+              username: username,
+            }
+          }
+        });
+        if (authErr) throw authErr;
+
+        if (data.user) {
+          // Add default profile record in profiles
+          const { error: profileErr } = await supabase
+            .from('profiles')
+            .upsert({
+              id: data.user.id,
+              username,
+              full_name: fullName,
+              avatar_url: `https://api.dicebear.com/7.x/adventurer/svg?seed=${username}`,
+              bio: 'Nuevo atleta de la comunidad Wayness.',
+              wpoints_balance: 500,
+              total_calories: 0,
+              total_workouts: 0,
+            });
+
+          onLoginSuccess(email, username, fullName, data.user);
+        }
+      } catch (err: any) {
+        setError(err.message || 'Error al registrar usuario en Supabase');
+        setIsSubmitting(false);
+      }
+    } else {
+      // Mock signup flow
+      setTimeout(() => {
+        setIsSubmitting(false);
+        onLoginSuccess(email, username, fullName);
+      }, 800);
+    }
   };
 
-  const handleForgotPassword = (e: React.FormEvent) => {
+  const handleGoogleSignIn = async () => {
+    setError('');
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { error: authErr } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: window.location.origin,
+            queryParams: {
+              access_type: 'offline',
+              prompt: 'consent',
+            },
+            scopes: 'https://www.googleapis.com/auth/fitness.activity.read https://www.googleapis.com/auth/fitness.body.read https://www.googleapis.com/auth/fitness.heart_rate.read'
+          }
+        });
+        if (authErr) throw authErr;
+      } catch (err: any) {
+        setError(err.message || 'Error al iniciar sesión con Google');
+      }
+    } else {
+      // Offline Simulation login with Google athlete credentials
+      onLoginSuccess('waynessapp@gmail.com', 'atleta_way_google', 'Carlos Google Fit');
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) {
       setError('Por favor introduce tu email');
       return;
     }
     setError('');
-    setMessage('Se ha enviado un correo de recuperación a ' + email);
-    setTimeout(() => {
-      setMessage('');
-      setAuthMode('signin');
-    }, 3000);
+    setIsSubmitting(true);
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        });
+        if (resetErr) throw resetErr;
+        setMessage('Se ha enviado un correo de recuperación real de Supabase.');
+        setTimeout(() => {
+          setMessage('');
+          setAuthMode('signin');
+        }, 4000);
+      } catch (err: any) {
+        setError(err.message || 'Error al enviar recuperación de clave');
+      } finally {
+        setIsSubmitting(false);
+      }
+    } else {
+      setTimeout(() => {
+        setIsSubmitting(false);
+        setMessage('Se ha enviado un correo de recuperación simulado a ' + email);
+        setTimeout(() => {
+          setMessage('');
+          setAuthMode('signin');
+        }, 3000);
+      }, 600);
+    }
+  };
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(SUPABASE_SQL_SCHEMA);
+    setCopiedSql(true);
+    setTimeout(() => setCopiedSql(false), 2000);
   };
 
   return (
@@ -56,12 +184,99 @@ export default function LandingPage({ onLoginSuccess }: LandingPageProps) {
       <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-purple-100/30 blur-[150px] rounded-full -z-10" />
       <div className="absolute bottom-10 right-1/4 w-[600px] h-[600px] bg-pink-100/30 blur-[200px] rounded-full -z-10" />
 
+      {/* Dynamic Database Status Banner */}
+      <div className="w-full bg-slate-900 text-white py-2.5 px-4 text-xs font-medium flex flex-wrap items-center justify-between gap-3 shadow-sm border-b border-purple-500/20">
+        <div className="flex items-center space-x-2">
+          <Database className={`w-4 h-4 ${isSupabaseConfigured ? 'text-emerald-400' : 'text-amber-400'}`} />
+          <span className="font-semibold text-gray-200">
+            {isSupabaseConfigured 
+              ? 'Conexión Real: Supabase DB está activa y lista' 
+              : 'Modo Demo Activo (Puntajes offline locales por LocalStorage)'}
+          </span>
+        </div>
+        <div className="flex items-center space-x-3.5">
+          <button
+            onClick={() => setShowSetupGuide(!showSetupGuide)}
+            className="text-purple-300 hover:text-white transition-colors flex items-center gap-1.5 focus:outline-none underline text-xs font-bold"
+          >
+            {showSetupGuide ? 'Ocultar Guía de Instalación' : '¿Cómo conectar tu base de datos?'}
+          </button>
+        </div>
+      </div>
+
+      {/* Supabase Integration Interactive Card */}
+      <AnimatePresence>
+        {showSetupGuide && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="bg-white border-b border-gray-200 overflow-hidden"
+          >
+            <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
+              <div className="flex items-start gap-4 p-4 bg-purple-50 rounded-2xl border border-purple-150">
+                <AlertCircle className="w-6 h-6 text-purple-600 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-extrabold text-sm text-gray-900 leading-snug">Configuración Paso a Paso de tu Base de Datos Real</h4>
+                  <p className="text-xs text-gray-650 leading-relaxed font-semibold mt-1">
+                    Inserta las credenciales de tu propio proyecto en Supabase para habilitar registro de usuarios en la nube, contraseñas en tiempo real y sincronización automática.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <h5 className="font-black text-xs uppercase tracking-wider text-purple-600">1. Variables de Entorno</h5>
+                  <p className="text-xs text-gray-600 font-medium leading-relaxed">
+                    Haga clic en el menú **Settings** de AI Studio y configure las siguientes variables en sus secretos de entorno:
+                  </p>
+                  <div className="p-3.5 bg-gray-900 text-gray-200 rounded-xl space-y-2 font-mono text-[11px] select-text">
+                    <p className="text-pink-400">VITE_SUPABASE_URL<span className="text-white">=</span>"https://tu-proyecto.supabase.co"</p>
+                    <p className="text-pink-400">VITE_SUPABASE_ANON_KEY<span className="text-white">=</span>"tu-anon-key-de-supabase"</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h5 className="font-black text-xs uppercase tracking-wider text-purple-600">2. Estructura de Tablas SQL</h5>
+                  <p className="text-xs text-gray-600 font-medium leading-relaxed">
+                    Copia y ejecuta este script SQL en el **SQL Editor** de tu cuenta de Supabase para inicializar la base de datos de manera nativa:
+                  </p>
+                  <button
+                    onClick={copyToClipboard}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition-all"
+                  >
+                    {copiedSql ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copiedSql ? '¡Copiado!' : 'Copiar Tablas SQL'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 space-y-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                  <span className="text-xs font-bold text-gray-900">Configuración de Google Login & Google Health</span>
+                </div>
+                <p className="text-xs text-gray-600 font-medium leading-relaxed">
+                  Para habilitar el ingreso con Google auténtico y la lectura de datos de **Google Fit / Google Health**:
+                </p>
+                <ul className="list-decimal list-inside text-xs text-gray-600 space-y-1 pl-1 font-medium select-text">
+                  <li>Activa el proveedor **Google** en **Authentication &gt; Providers** de tu Supabase Dashboard.</li>
+                  <li>Configura los campos de **Client ID** y **Client Secret** generados en tu portal de desarrolladores de Google Cloud Console.</li>
+                  <li>Inscribe la URL de redirección autorizada de Supabase en tu consola de Google.</li>
+                  <li>Configura la URL de redirección del sitio en Supabase apuntando a: <strong className="text-purple-600 underline font-mono">{window.location.origin}</strong></li>
+                </ul>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Navigation Header */}
       <header className="border-b border-gray-100 bg-white/90 backdrop-blur-md sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center font-bold text-white tracking-widest text-lg shadow-sm">
-              W
+              <img src="/logo.svg" alt="Wayness Logo" className="w-8 h-8 rounded-lg" />
             </div>
             <span className="font-extrabold text-2xl bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent uppercase tracking-wider">
               Wayness
@@ -112,10 +327,10 @@ export default function LandingPage({ onLoginSuccess }: LandingPageProps) {
             </button>
             <button
               id="hero-explore-btn"
-              onClick={() => setAuthMode('signin')}
+              onClick={handleGoogleSignIn}
               className="w-full sm:w-auto px-8 py-4 rounded-xl bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-gray-950 font-bold tracking-wide transition-all text-center cursor-pointer flex items-center justify-center gap-2 shadow-xs"
             >
-              Demo de Acceso Directo <LogIn className="w-4 h-4 text-purple-600" />
+              Google Direct Connection <img src="/logo.svg" className="w-4 h-4" alt="Wayness Icon" />
             </button>
           </div>
 
@@ -149,8 +364,8 @@ export default function LandingPage({ onLoginSuccess }: LandingPageProps) {
               <Award className="w-6 h-6" />
             </div>
             <div>
-              <h4 className="font-extrabold text-sm text-gray-900">Prueba Fitness de la Semana</h4>
-              <p className="text-xs text-gray-500 font-medium">¡Registra un trote en Zona Roja (130+ bpm) y multiplica tus WPoints x1.5!</p>
+              <h4 className="font-extrabold text-sm text-gray-900">Sincroniza tu Google Health</h4>
+              <p className="text-xs text-gray-500 font-medium">Autocarga tus entrenamientos de Google Fit y adquiere insignias.</p>
             </div>
           </div>
         </div>
@@ -223,24 +438,30 @@ export default function LandingPage({ onLoginSuccess }: LandingPageProps) {
               <form onSubmit={handleLogin} className="space-y-5">
                 <div className="text-center space-y-2">
                   <h3 className="text-2xl font-black text-gray-950 tracking-tight">Iniciar Sesión</h3>
-                  <p className="text-xs text-gray-500 font-bold">Ingresa tus datos o usa un perfil demo</p>
+                  <p className="text-xs text-gray-500 font-bold">
+                    {isSupabaseConfigured 
+                      ? 'Conexión activa con Supabase DB' 
+                      : 'Ingresa tus datos o usa un perfil de prueba'}
+                  </p>
                 </div>
 
                 {/* Demo Logins */}
-                <div className="space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmail('waynessapp@gmail.com');
-                      setPassword('demo1234');
-                      setUsername('atleta_way');
-                      setFullName('Carlos Gómez');
-                    }}
-                    className="w-full py-2.5 px-4 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 rounded-xl text-xs font-bold tracking-wide transition-all cursor-pointer flex items-center justify-center gap-2 shadow-xs"
-                  >
-                    🚀 Rellenar con cuenta Demo (Carlos)
-                  </button>
-                </div>
+                {!isSupabaseConfigured && (
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmail('waynessapp@gmail.com');
+                        setPassword('demo1234');
+                        setUsername('atleta_way');
+                        setFullName('Carlos Gómez');
+                      }}
+                      className="w-full py-2.5 px-4 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 rounded-xl text-xs font-bold tracking-wide transition-all cursor-pointer flex items-center justify-center gap-2 shadow-xs"
+                    >
+                      🚀 Rellenar con cuenta Demo (Carlos)
+                    </button>
+                  </div>
+                )}
 
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-gray-600">Email</label>
@@ -283,9 +504,10 @@ export default function LandingPage({ onLoginSuccess }: LandingPageProps) {
 
                 <button
                   type="submit"
-                  className="w-full bg-gradient-to-r from-purple-600 to-pink-500 py-3 rounded-xl font-bold tracking-wide shadow-sm text-white hover:opacity-95 transition-all cursor-pointer"
+                  disabled={isSubmitting}
+                  className="w-full bg-gradient-to-r from-purple-600 to-pink-500 py-3 rounded-xl font-bold tracking-wide shadow-sm text-white hover:opacity-95 transition-all cursor-pointer flex items-center justify-center gap-2"
                 >
-                  Continuar
+                  {isSubmitting ? <RefreshCw className="w-4 h-4 animate-spin-slow" /> : 'Continuar'}
                 </button>
 
                 <div className="text-center">
@@ -369,9 +591,10 @@ export default function LandingPage({ onLoginSuccess }: LandingPageProps) {
 
                 <button
                   type="submit"
-                  className="w-full bg-gradient-to-r from-purple-600 to-pink-500 py-3 rounded-xl font-bold tracking-wide shadow-sm text-white hover:opacity-95 transition-all cursor-pointer"
+                  disabled={isSubmitting}
+                  className="w-full bg-gradient-to-r from-purple-600 to-pink-500 py-3 rounded-xl font-bold tracking-wide shadow-sm text-white hover:opacity-95 transition-all cursor-pointer flex items-center justify-center gap-2"
                 >
-                  Registrarme y Acceder
+                  {isSubmitting ? <RefreshCw className="w-4 h-4 animate-spin-slow" /> : 'Registrarme y Acceder'}
                 </button>
 
                 <div className="text-center">
@@ -412,7 +635,7 @@ export default function LandingPage({ onLoginSuccess }: LandingPageProps) {
                 </div>
 
                 {message && (
-                  <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 p-3 rounded-lg text-center font-bold">
+                  <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 p-3 rounded-lg text-center font-bold border">
                     {message}
                   </p>
                 )}
@@ -453,29 +676,33 @@ export default function LandingPage({ onLoginSuccess }: LandingPageProps) {
               </span>
             </div>
 
-            {/* Social Logins simulated buttons */}
-            <div className="grid grid-cols-3 gap-3">
+            {/* Google Authentication Integration */}
+            <div className="space-y-3">
               <button
                 type="button"
-                onClick={() => onLoginSuccess('google.user@gmail.com', 'google_user', 'Google User')}
-                className="py-2 px-3 border border-gray-200 bg-white hover:bg-gray-50 rounded-xl text-center text-xs text-gray-700 font-bold cursor-pointer transition-colors"
+                onClick={handleGoogleSignIn}
+                className="w-full bg-white border border-gray-200 hover:bg-gray-50 py-3 px-4 rounded-xl text-center text-xs text-gray-700 font-bold cursor-pointer transition-colors flex items-center justify-center gap-2 shadow-sm"
               >
-                Google
+                <img src="/logo.svg" className="w-5 h-5 rounded" alt="Google" />
+                Continuar con Google Fit Sync
               </button>
-              <button
-                type="button"
-                onClick={() => onLoginSuccess('apple.user@apple.com', 'apple_user', 'Apple User')}
-                className="py-2 px-3 border border-gray-200 bg-white hover:bg-gray-50 rounded-xl text-center text-xs text-gray-700 font-bold cursor-pointer transition-colors"
-              >
-                Apple
-              </button>
-              <button
-                type="button"
-                onClick={() => onLoginSuccess('fb.user@facebook.com', 'facebook_user', 'FB User')}
-                className="py-2 px-3 border border-gray-200 bg-white hover:bg-gray-50 rounded-xl text-center text-xs text-gray-700 font-bold cursor-pointer transition-colors"
-              >
-                Facebook
-              </button>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => onLoginSuccess('apple.user@apple.com', 'apple_user', 'Apple User')}
+                  className="py-2.5 px-3 border border-gray-200 bg-white hover:bg-gray-50 rounded-xl text-center text-xs text-gray-700 font-bold cursor-pointer transition-colors"
+                >
+                  Apple
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onLoginSuccess('fb.user@facebook.com', 'facebook_user', 'FB User')}
+                  className="py-2.5 px-3 border border-gray-200 bg-white hover:bg-gray-50 rounded-xl text-center text-xs text-gray-700 font-bold cursor-pointer transition-colors"
+                >
+                  Facebook
+                </button>
+              </div>
             </div>
           </motion.div>
         </div>
@@ -484,7 +711,7 @@ export default function LandingPage({ onLoginSuccess }: LandingPageProps) {
       {/* Footer */}
       <footer className="border-t border-gray-100 bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 text-center text-gray-400 text-xs">
         <p className="font-semibold text-gray-550">© 2026 Wayness Platform. Todos los derechos reservados. Tu sudor, tu divisa.</p>
-        <p className="mt-2 text-gray-400 font-medium">Desarrollado de forma nativa e impulsado por tecnología gamificada.</p>
+        <p className="mt-2 text-gray-400 font-medium">Sincronización segura de datos de Google Health respaldada por encriptación Supabase SSL.</p>
       </footer>
     </div>
   );
