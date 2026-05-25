@@ -17,8 +17,17 @@ export default function Header({ profile, notifications, activeTab, setActiveTab
       <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 flex items-center justify-between">
         {/* Logo and Brand */}
         <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setActiveTab('feed')}>
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-pink-500 flex items-center justify-center font-bold text-white tracking-tight text-lg shadow-sm">
-            W
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-pink-500 flex items-center justify-center text-white shadow-sm">
+            <svg viewBox="0 0 512 512" fill="none" className="w-7 h-7" xmlns="http://www.w3.org/2005/svg">
+              <rect x="74" y="211" width="20" height="90" rx="10" fill="currentColor" />
+              <rect x="114" y="176" width="36" height="160" rx="18" fill="currentColor" />
+              <rect x="174" y="144" width="46" height="190" rx="23" fill="currentColor" />
+              <rect x="292" y="144" width="46" height="190" rx="23" fill="currentColor" />
+              <rect x="233" y="210" width="46" height="124" rx="23" fill="currentColor" />
+              <path d="M 174 250 L 338 250 L 338 312 C 338 358, 174 358, 174 312 Z" fill="currentColor" />
+              <rect x="362" y="176" width="36" height="160" rx="18" fill="currentColor" />
+              <rect x="418" y="211" width="20" height="90" rx="10" fill="currentColor" />
+            </svg>
           </div>
           <div>
             <span className="font-extrabold text-xl text-gray-900 uppercase tracking-tight block">

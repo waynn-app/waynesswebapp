@@ -275,8 +275,17 @@ export default function LandingPage({ onLoginSuccess }: LandingPageProps) {
       <header className="border-b border-gray-100 bg-white/90 backdrop-blur-md sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center font-bold text-white tracking-widest text-lg shadow-sm">
-              <img src="/logo.svg" alt="Wayness Logo" className="w-8 h-8 rounded-lg" />
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center text-white shadow-sm">
+              <svg viewBox="0 0 512 512" fill="none" className="w-7 h-7" xmlns="http://www.w3.org/2005/svg">
+                <rect x="74" y="211" width="20" height="90" rx="10" fill="currentColor" />
+                <rect x="114" y="176" width="36" height="160" rx="18" fill="currentColor" />
+                <rect x="174" y="144" width="46" height="190" rx="23" fill="currentColor" />
+                <rect x="292" y="144" width="46" height="190" rx="23" fill="currentColor" />
+                <rect x="233" y="210" width="46" height="124" rx="23" fill="currentColor" />
+                <path d="M 174 250 L 338 250 L 338 312 C 338 358, 174 358, 174 312 Z" fill="currentColor" />
+                <rect x="362" y="176" width="36" height="160" rx="18" fill="currentColor" />
+                <rect x="418" y="211" width="20" height="90" rx="10" fill="currentColor" />
+              </svg>
             </div>
             <span className="font-extrabold text-2xl bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent uppercase tracking-wider">
               Wayness
